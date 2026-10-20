@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fotos 3×4</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; background: #f3f4f6; min-height: 100vh; color: #1f2937; }
+
+header {
+  background: #fff;
+  padding: 14px 24px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky; top: 0; z-index: 10;
+}
+header h1 { font-size: 1rem; font-weight: 600; }
+
+.main { padding: 24px; max-width: 1000px; margin: 0 auto; }
+
+.tabs { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+.tab {
+  padding: 5px 14px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all .15s;
+}
+.tab.active { background: #1f2937; color: #fff; border-color: #1f2937; }
+.tab.add-tab { border-style: dashed; color: #9ca3af; border-color: #9ca3af; background: none; }
+.tab.add-tab:hover { color: #4b5563; border-color: #4b5563; }
+
+.page-info { font-size: 0.78rem; color: #9ca3af; margin-bottom: 14px; }
+
+.grid-wrap { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+
+.slot {
+  aspect-ratio: 3/4;
+  border: 2px dashed #e5e7eb;
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  background: #f9fafb;
+  transition: border-color .15s, background .15s;
+}
+.slot:not(.filled):hover { border-color: #9ca3af; background: #f3f4f6; }
+.slot.filled { border: none; cursor: default; }
+.slot img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.slot-plus { color: #d1d5db; font-size: 1.5rem; font-weight: 300; line-height: 1; }
+
+.slot-overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.55);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.slot.filled:hover .slot-overlay { display: flex; }
+.slot-overlay button {
+  background: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 500;
+  width: 80px;
+}
+.slot-overlay button:hover { background: #f3f4f6; }
+.slot-overlay button.del { color: #dc2626; }
+.slot.drag-over { outline: 2px dashed #374151; background: #f0f0f0; }
+
+.actions { margin-top: 16px; display: flex; justify-content: flex-end; }
+.btn {
+  background: #1f2937;
+  color: #fff;
+  border: none;
+  padding: 9px 22px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.btn:hover { background: #111827; }
+
+/* Modals */
+.backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 50;
+  padding: 16px;
+}
+.modal { background: #fff; border-radius: 12px; padding: 22px; width: 100%; max-width: 340px; }
+.modal h2 { font-size: 1rem; font-weight: 600; margin-bottom: 14px; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.modal-footer button {
+  padding: 7px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  border: 1px solid #d1d5db;
+  background: #fff;
+}
+.modal-footer button.confirm { background: #1f2937; color: #fff; border-color: #1f2937; }
+.modal-footer button.confirm:hover { background: #111827; }
+
+#cropCanvas {
+  display: block;
+  border-radius: 6px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+#cropCanvas:active { cursor: grabbing; }
+
+.crop-controls { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.crop-controls button {
+  padding: 4px 10px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.crop-controls button:hover { background: #f3f4f6; }
+.crop-controls input[type=range] { flex: 1; cursor: pointer; accent-color: #1f2937; }
+
+.export-opt { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 0.9rem; cursor: pointer; }
+.export-opt input { width: 16px; height: 16px; cursor: pointer; accent-color: #1f2937; }
+.export-hint { font-size: 0.78rem; color: #9ca3af; margin-top: 6px; }
+
+.hint {
+  margin-top: 20px;
+  font-size: 0.78rem;
+  color: #9ca3af;
+  text-align: center;
+  line-height: 1.6;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Fotos 3×4 — Chaveirinhos</h1>
+  <button class="btn" onclick="openExport()">Exportar PDF</button>
+</header>
+
+<div class="main">
+  <div class="tabs" id="tabs"></div>
+  <div class="page-info" id="pageInfo"></div>
+  <div class="grid-wrap">
+    <div class="grid" id="grid"></div>
+  </div>
+  <p class="hint">Clique no + para adicionar uma foto • Passe o mouse sobre a foto para editar ou remover • Arraste para reordenar</p>
+  <div class="actions">
+    <button class="btn" onclick="openExport()">Exportar PDF</button>
+  </div>
+</div>
+
+<!-- Crop Modal -->
+<div class="backdrop" id="cropModal" style="display:none">
+  <div class="modal">
+    <h2>Ajustar foto</h2>
+    <canvas id="cropCanvas" width="270" height="360"></canvas>
+    <div class="crop-controls">
+      <button onclick="rotate(-90)" title="Girar para esquerda">↺</button>
+      <button onclick="rotate(90)"  title="Girar para direita">↻</button>
+      <input type="range" id="zoomSlider" min="50" max="500" step="1" oninput="onZoom(+this.value)">
+    </div>
+    <div class="modal-footer">
+      <button onclick="cancelEdit()">Cancelar</button>
+      <button class="confirm" onclick="confirmEdit()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export Modal -->
+<div class="backdrop" id="exportModal" style="display:none">
+  <div class="modal">
+    <h2>Exportar PDF</h2>
+    <label class="export-opt">
+      <input type="checkbox" id="cropMarks" checked>
+      Incluir linhas de corte ao redor das fotos
+    </label>
+    <p class="export-hint">As linhas são finas (cinza claro) e ajudam a cortar com tesoura ou estilete.</p>
+    <div class="modal-footer">
+      <button onclick="closeExport()">Cancelar</button>
+      <button class="confirm" onclick="generatePDF()">Baixar PDF</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept="image/*" style="display:none">
+
+<script>
+const COLS = 6, ROWS = 6, PER_PAGE = 36;
+const PW = 30, PH = 40, GAP = 3; // mm
+const PVW = 270, PVH = 360;      // preview canvas px (matches 3:4)
+const FW = 354, FH = 472;        // final output px at 300dpi (30mm, 40mm)
+
+const state = { pages: [newPage()], cur: 0 };
+let editing = null;
+let cs = null; // cropState
+
+function newPage() { return Array(PER_PAGE).fill(null); }
+
+// --- Persistence ---
+function save() {
+  try {
+    localStorage.setItem('3x4v1', JSON.stringify(
+      state.pages.map(p =>
+        p.map(s => s ? { d: s.dataURL, x: s.x, y: s.y, sc: s.sc, r: s.r } : null)
+      )
+    ));
+  } catch(_) {}
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem('3x4v1');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    state.pages = [];
+    data.forEach(page => {
+      const p = newPage();
+      page.forEach((s, i) => {
+        if (!s) return;
+        const img = new Image();
+        img.src = s.d;
+        p[i] = { dataURL: s.d, img, x: s.x, y: s.y, sc: s.sc, r: s.r };
+      });
+      state.pages.push(p);
+    });
+    if (state.pages.length === 0) state.pages = [newPage()];
+  } catch(_) {
+    localStorage.removeItem('3x4v1');
+    state.pages = [newPage()];
+  }
+}
+
+// --- Render ---
+function render() {
+  // tabs
+  const tabsEl = document.getElementById('tabs');
+  tabsEl.innerHTML = state.pages.map((_, i) =>
+    `<button class="tab${i === state.cur ? ' active' : ''}" onclick="switchPage(${i})">Página ${i + 1}</button>`
+  ).join('') + `<button class="tab add-tab" onclick="addPage()">+ Página</button>`;
+
+  // info
+  const filled = state.pages[state.cur].filter(Boolean).length;
+  document.getElementById('pageInfo').textContent =
+    `${filled} de ${PER_PAGE} fotos nesta página`;
+
+  // grid
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  state.pages[state.cur].forEach((slot, i) => {
+    const div = document.createElement('div');
+    div.className = 'slot' + (slot ? ' filled' : '');
+    div.draggable = !!slot;
+    div.dataset.i = i;
+
+    if (slot) {
+      const img = document.createElement('img');
+      img.src = slot.dataURL;
+      img.draggable = false;
+      const ov = document.createElement('div');
+      ov.className = 'slot-overlay';
+      ov.innerHTML =
+        `<button onclick="editSlot(${i})">Editar</button>` +
+        `<button class="del" onclick="deleteSlot(${i})">Remover</button>`;
+      div.append(img, ov);
+    } else {
+      div.innerHTML = '<span class="slot-plus">+</span>';
+      div.onclick = () => pickFile(i);
+    }
+
+    div.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', i);
+    });
+    div.addEventListener('dragover', e => {
+      e.preventDefault();
+      div.classList.add('drag-over');
+    });
+    div.addEventListener('dragleave', () => div.classList.remove('drag-over'));
+    div.addEventListener('drop', e => {
+      e.preventDefault();
+      div.classList.remove('drag-over');
+      const from = +e.dataTransfer.getData('text/plain');
+      const to = +div.dataset.i;
+      if (from !== to) {
+        const p = state.pages[state.cur];
+        [p[from], p[to]] = [p[to], p[from]];
+        save(); render();
+      }
+    });
+
+    grid.appendChild(div);
+  });
+}
+
+// --- File picker ---
+let pendingSlot = -1;
+const fileInput = document.getElementById('fileInput');
+
+function pickFile(i) {
+  pendingSlot = i;
+  fileInput.value = '';
+  fileInput.click();
+}
+
+fileInput.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => openEditor(img, pendingSlot, null);
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(f);
+});
+
+// --- Crop editor ---
+const cropCanvas = document.getElementById('cropCanvas');
+const ctx = cropCanvas.getContext('2d');
+
+function openEditor(img, slotIdx, existing) {
+  editing = { page: state.cur, slot: slotIdx };
+  // cover scale = smallest scale that fills the 3:4 frame
+  const cover = Math.max(PVW / img.naturalWidth, PVH / img.naturalHeight);
+  cs = {
+    img, cover,
+    x:  existing?.x  ?? 0,
+    y:  existing?.y  ?? 0,
+    sc: existing?.sc ?? cover,
+    r:  existing?.r  ?? 0,
+  };
+  const sl = document.getElementById('zoomSlider');
+  sl.value = Math.round((cs.sc / cover) * 100);
+  document.getElementById('cropModal').style.display = 'flex';
+  drawCrop();
+}
+
+function drawCrop() {
+  ctx.clearRect(0, 0, PVW, PVH);
+  ctx.fillStyle = '#6b7280';
+  ctx.fillRect(0, 0, PVW, PVH);
+  ctx.save();
+  ctx.translate(PVW / 2 + cs.x, PVH / 2 + cs.y);
+  ctx.rotate(cs.r * Math.PI / 180);
+  ctx.scale(cs.sc, cs.sc);
+  ctx.drawImage(cs.img, -cs.img.naturalWidth / 2, -cs.img.naturalHeight / 2);
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, PVW - 2, PVH - 2);
+}
+
+let dragging = false, lx = 0, ly = 0;
+cropCanvas.addEventListener('mousedown', e => {
+  dragging = true; lx = e.offsetX; ly = e.offsetY;
+});
+cropCanvas.addEventListener('mousemove', e => {
+  if (!dragging || !cs) return;
+  cs.x += e.offsetX - lx; cs.y += e.offsetY - ly;
+  lx = e.offsetX; ly = e.offsetY;
+  drawCrop();
+});
+cropCanvas.addEventListener('mouseup',    () => dragging = false);
+cropCanvas.addEventListener('mouseleave', () => dragging = false);
+cropCanvas.addEventListener('wheel', e => {
+  if (!cs) return;
+  e.preventDefault();
+  cs.sc *= e.deltaY > 0 ? 0.95 : 1.05;
+  document.getElementById('zoomSlider').value = Math.round((cs.sc / cs.cover) * 100);
+  drawCrop();
+}, { passive: false });
+
+function onZoom(v) {
+  if (!cs) return;
+  cs.sc = (v / 100) * cs.cover;
+  drawCrop();
+}
+
+function rotate(deg) {
+  if (!cs) return;
+  cs.r = (cs.r + deg + 360) % 360;
+  drawCrop();
+}
+
+function cancelEdit() {
+  document.getElementById('cropModal').style.display = 'none';
+  cs = null; editing = null;
+}
+
+function confirmEdit() {
+  const out = document.createElement('canvas');
+  out.width = FW; out.height = FH;
+  const oc = out.getContext('2d');
+  const ratio = FW / PVW;
+  oc.fillStyle = '#fff';
+  oc.fillRect(0, 0, FW, FH);
+  oc.save();
+  oc.translate(FW / 2 + cs.x * ratio, FH / 2 + cs.y * ratio);
+  oc.rotate(cs.r * Math.PI / 180);
+  oc.scale(cs.sc * ratio, cs.sc * ratio);
+  oc.drawImage(cs.img, -cs.img.naturalWidth / 2, -cs.img.naturalHeight / 2);
+  oc.restore();
+  const dataURL = out.toDataURL('image/jpeg', 0.92);
+  state.pages[editing.page][editing.slot] = {
+    dataURL, img: cs.img,
+    x: cs.x, y: cs.y, sc: cs.sc, r: cs.r,
+  };
+  save();
+  document.getElementById('cropModal').style.display = 'none';
+  cs = null; editing = null;
+  render();
+}
+
+function editSlot(i) {
+  const s = state.pages[state.cur][i];
+  if (s) openEditor(s.img, i, s);
+}
+
+function deleteSlot(i) {
+  state.pages[state.cur][i] = null;
+  save(); render();
+}
+
+function switchPage(i) { state.cur = i; render(); }
+
+function addPage() {
+  state.pages.push(newPage());
+  state.cur = state.pages.length - 1;
+  save(); render();
+}
+
+// --- Export ---
+function openExport() {
+  const total = state.pages.reduce((n, p) => n + p.filter(Boolean).length, 0);
+  if (total === 0) { alert('Nenhuma foto adicionada ainda.'); return; }
+  document.getElementById('exportModal').style.display = 'flex';
+}
+
+function closeExport() {
+  document.getElementById('exportModal').style.display = 'none';
+}
+
+function generatePDF() {
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+  const withLines = document.getElementById('cropMarks').checked;
+  const A4W = 210, A4H = 297;
+  const gridW = COLS * PW + (COLS - 1) * GAP; // 195mm
+  const gridH = ROWS * PH + (ROWS - 1) * GAP; // 255mm
+  const ox = (A4W - gridW) / 2; // 7.5mm — centered
+  const oy = (A4H - gridH) / 2; // 21mm — centered
+
+  let firstPage = true;
+  state.pages.forEach(page => {
+    if (!page.some(Boolean)) return;
+    if (!firstPage) pdf.addPage();
+    firstPage = false;
+
+    page.forEach((slot, i) => {
+      if (!slot) return;
+      const col = i % COLS;
+      const row = Math.floor(i / COLS);
+      const x = ox + col * (PW + GAP);
+      const y = oy + row * (PH + GAP);
+      pdf.addImage(slot.dataURL, 'JPEG', x, y, PW, PH);
+      if (withLines) {
+        pdf.setDrawColor(200, 200, 200);
+        pdf.setLineWidth(0.15);
+        pdf.rect(x, y, PW, PH);
+      }
+    });
+  });
+
+  pdf.save('fotos-3x4.pdf');
+  closeExport();
+}
+
+// --- Init ---
+load();
+render();
+</script>
+</body>
+</html>
